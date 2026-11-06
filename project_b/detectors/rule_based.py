@@ -2,7 +2,8 @@
 Declarative / Schema-Check Detectors (Project B, Task 3a).
 
 This is Tier 1 (the cheapest tier): deterministic rules that run on every row
-with zero ML/LLM cost. Each function returns a standardized findings DataFrame:
+with zero ML/LLM cost. Covers all 12 problem types so measure.py can evaluate
+every (problem_type x detector_family) cell. Each function returns:
 [row_id, problem_type, detector, confidence, explanation].
 """
 
@@ -35,19 +36,44 @@ EXPECTED_COLUMNS = [
 ]
 
 # Tight bounding box around the 5 boroughs of New York City.
-# Swapping lat (~40.7) and lon (~-73.9) immediately falls outside this box.
 NYC_LAT_MIN, NYC_LAT_MAX = 40.47, 40.95
 NYC_LON_MIN, NYC_LON_MAX = -74.27, -73.68
 
-# Strict ISO-8601 timestamp pattern expected from Socrata (YYYY-MM-DD HH:MM:SS or YYYY-MM-DDTHH:MM:SS).
 ISO_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}")
-
-# Strict 5-digit US ZIP code (or 5+4 format). Strings like "10027.0" fail this check.
 ZIP_REGEX = re.compile(r"^\d{5}(-\d{4})?$")
 
-# Compiled regexes for structured PII (North American phone numbers and standard emails).
 PHONE_REGEX = re.compile(r"(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b")
 EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+
+# Static, incomplete allow-list of (complaint_type -> valid descriptors) for Problem 10.
+STATIC_COMPLAINT_DESCRIPTOR_ALLOWLIST = {
+    "Noise - Residential": {
+        "Loud Music/Party",
+        "Banging/Pounding",
+        "Loud Talking",
+        "Loud Television",
+    },
+    "Illegal Parking": {
+        "Blocked Hydrant",
+        "Posted Parking Sign Violation",
+        "Blocked Sidewalk",
+        "Commercial Overnight Parking",
+    },
+    "HEAT/HOT WATER": {
+        "ENTIRE BUILDING",
+        "APARTMENT ONLY",
+    },
+    "Street Condition": {
+        "Pothole",
+        "Cave-in",
+        "Rough, Pitted or Cracked Roads",
+    },
+    "Rodent": {
+        "Rat Sighting",
+        "Mouse Sighting",
+        "Condition Attracting Rodents",
+    },
+}
 
 
 def _empty_findings() -> pd.DataFrame:
@@ -56,17 +82,10 @@ def _empty_findings() -> pd.DataFrame:
 
 
 def _zip_to_expected_borough(zip_str: str) -> str | None:
-    """
-    Maps a 5-digit NYC ZIP code to its expected uppercase borough name using
-    USPS 3-digit prefix allocation rules for NYC. Returns None if not a known
-    NYC prefix.
-    """
+    """Maps a 5-digit NYC ZIP code to its expected uppercase borough name."""
     if not zip_str or len(zip_str) < 5 or not zip_str[:5].isdigit():
         return None
-    z5 = zip_str[:5]
-    prefix3 = z5[:3]
-
-    # USPS 3-digit prefix assignments for New York City boroughs:
+    prefix3 = zip_str[:3]
     if prefix3 in ("100", "101", "102"):
         return "MANHATTAN"
     if prefix3 == "103":
@@ -86,10 +105,7 @@ def _zip_to_expected_borough(zip_str: str) -> str | None:
 def check_renamed_dropped_column(
     df: pd.DataFrame, expected_columns: list[str] | None = None
 ) -> pd.DataFrame:
-    """
-    Checks whether any required column is missing from the DataFrame schema.
-    Logs row_id = -1 to match the batch-level ground-truth convention in the injector.
-    """
+    """Checks whether any required column is missing from the DataFrame schema."""
     expected = expected_columns or EXPECTED_COLUMNS
     present = set(df.columns)
     missing = [col for col in expected if col not in present]
@@ -113,11 +129,7 @@ def check_renamed_dropped_column(
 # 2. Column type change
 # ---------------------------------------------------------------------------
 def check_type_change(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Flags rows where incident_zip fails strict 5-digit ZIP formatting (e.g.
-    float-cast strings like '10027.0' or words like 'ten thousand twenty seven')
-    or where latitude/longitude cannot be coerced to float.
-    """
+    """Flags rows where incident_zip or coordinates fail strict type/format checks."""
     records = []
 
     if "incident_zip" in df.columns:
@@ -155,10 +167,7 @@ def check_type_change(df: pd.DataFrame) -> pd.DataFrame:
 # 3. Date format switch mid-batch
 # ---------------------------------------------------------------------------
 def check_date_format_switch(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Flags rows where created_date deviates from the expected ISO-8601 format
-    (YYYY-MM-DD HH:MM:SS), catching mid-batch flips to DD/MM/YYYY or text dates.
-    """
+    """Flags rows where created_date deviates from ISO-8601 format."""
     if "created_date" not in df.columns:
         return _empty_findings()
 
@@ -183,11 +192,7 @@ def check_date_format_switch(df: pd.DataFrame) -> pd.DataFrame:
 # 4. Latitude/longitude swapped (via NYC bounding-box rule)
 # ---------------------------------------------------------------------------
 def check_latlong_swap(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Detects swapped or out-of-bounds coordinates using a deterministic bounding
-    box around NYC. Specifically notes when latitude falls in NYC's longitude
-    range and vice versa.
-    """
+    """Detects swapped or out-of-bounds coordinates using a deterministic NYC bounding box."""
     if "latitude" not in df.columns or "longitude" not in df.columns:
         return _empty_findings()
 
@@ -205,7 +210,6 @@ def check_latlong_swap(df: pd.DataFrame) -> pd.DataFrame:
     records = []
     for idx in df.index[out_of_box]:
         la, lo = lat.at[idx], lon.at[idx]
-        # Check if swapping them places the point right back inside NYC
         is_exact_swap = (NYC_LAT_MIN <= lo <= NYC_LAT_MAX) and (NYC_LON_MIN <= la <= NYC_LON_MAX)
         detail = "swapped lat/lon values" if is_exact_swap else "outside NYC bounding box"
         records.append({
@@ -223,11 +227,7 @@ def check_latlong_swap(df: pd.DataFrame) -> pd.DataFrame:
 # 5. Exact duplicates
 # ---------------------------------------------------------------------------
 def check_exact_duplicate(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Flags duplicate rows using `keep='first'` so only the second and subsequent
-    cloned occurrences are flagged (matching the injector's ground-truth indices).
-    Checks both full-row equality and duplicate unique_key values.
-    """
+    """Flags verbatim duplicate rows or duplicate unique_key values."""
     if len(df) == 0:
         return _empty_findings()
 
@@ -252,20 +252,97 @@ def check_exact_duplicate(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# 6. Near-duplicates (Rigid exact-string + 60s rule baseline)
+# ---------------------------------------------------------------------------
+# Expected: very low recall on reworded near-duplicates — this is the point, included for
+# completeness per Task 3 to show why fuzzy matching in statistical.py is required.
+def check_near_duplicate_rigid(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Naive rule baseline for near-duplicates: requires EXACT equality on
+    (agency, complaint_type, descriptor, incident_zip) and created_date within
+    60 seconds, with a different unique_key. Fails whenever descriptor has even
+    a single character edit or timestamp shifts >60s.
+    """
+    req = {"created_date", "complaint_type", "descriptor"}
+    if not req.issubset(df.columns) or len(df) < 2:
+        return _empty_findings()
+
+    work = df.copy()
+    work["_ts"] = pd.to_datetime(work["created_date"], errors="coerce", format="mixed")
+    group_cols = [c for c in ("agency", "complaint_type", "descriptor", "incident_zip") if c in work.columns]
+
+    records = []
+    for _, grp in work.dropna(subset=["_ts"]).groupby(group_cols, dropna=False):
+        if len(grp) < 2:
+            continue
+        grp_sorted = grp.sort_values("_ts")
+        ts_diff = grp_sorted["_ts"].diff()
+        # Only flag if 0 < dt <= 60s and not already an exact unique_key duplicate
+        for idx in grp_sorted.index[
+            (ts_diff > pd.Timedelta(seconds=0)) & (ts_diff <= pd.Timedelta(seconds=60))
+        ]:
+            records.append({
+                "row_id": idx,
+                "problem_type": "near_duplicate",
+                "detector": "rule_based",
+                "confidence": 0.60,
+                "explanation": "Identical descriptor and complaint_type within 60 seconds.",
+            })
+
+    return pd.DataFrame(records, columns=FINDINGS_COLUMNS) if records else _empty_findings()
+
+
+# ---------------------------------------------------------------------------
+# 7. Null spike in one agency's records (Hardcoded 50% threshold baseline)
+# ---------------------------------------------------------------------------
+# Expected: less sensitive/more arbitrary than the statistical Z-test — included for
+# completeness per Task 3 to show why relative baseline comparison outperforms static cutoffs.
+def check_null_spike_fixed_threshold(
+    df: pd.DataFrame, fixed_null_cutoff: float = 0.50
+) -> pd.DataFrame:
+    """
+    Naive rule baseline for null_spike: flags an agency only if >50% of its rows
+    have nulls across all monitored columns, ignoring sample size or historical
+    agency baselines.
+    """
+    if "agency" not in df.columns or len(df) == 0:
+        return _empty_findings()
+
+    monitored = [c for c in ("descriptor", "incident_zip", "resolution_description") if c in df.columns]
+    if not monitored:
+        return _empty_findings()
+
+    row_all_null = df[monitored].isna().all(axis=1)
+    records = []
+
+    for agency, grp in df.groupby("agency", dropna=False):
+        null_rate = float(row_all_null.loc[grp.index].mean())
+        if null_rate > fixed_null_cutoff:
+            for idx in grp.index[row_all_null.loc[grp.index]]:
+                records.append({
+                    "row_id": idx,
+                    "problem_type": "null_spike",
+                    "detector": "rule_based",
+                    "confidence": 0.65,
+                    "explanation": (
+                        f"Agency '{agency}' null rate ({null_rate:.1%}) exceeded "
+                        f"hardcoded rule cutoff ({fixed_null_cutoff:.0%})."
+                    ),
+                })
+
+    return pd.DataFrame(records, columns=FINDINGS_COLUMNS) if records else _empty_findings()
+
+
+# ---------------------------------------------------------------------------
 # 8. Closed date earlier than created date
 # ---------------------------------------------------------------------------
 def check_closed_before_created(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Flags rows where closed_date < created_date when both timestamps are present
-    and parseable.
-    """
+    """Flags rows where closed_date < created_date."""
     if "created_date" not in df.columns or "closed_date" not in df.columns:
         return _empty_findings()
 
-    # Use format='ISO8601' or fallback coercion so valid timestamps compare cleanly
     created = pd.to_datetime(df["created_date"], errors="coerce", format="mixed")
     closed = pd.to_datetime(df["closed_date"], errors="coerce", format="mixed")
-
     inverted_mask = created.notna() & closed.notna() & (closed < created)
 
     records = [
@@ -288,10 +365,7 @@ def check_closed_before_created(df: pd.DataFrame) -> pd.DataFrame:
 # 9. ZIP code inconsistent with borough
 # ---------------------------------------------------------------------------
 def check_zip_borough_mismatch(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Verifies that valid 5-digit NYC ZIP codes match the row's stated borough
-    using the static USPS NYC prefix lookup table.
-    """
+    """Verifies that valid 5-digit NYC ZIP codes match the row's stated borough."""
     if "incident_zip" not in df.columns or "borough" not in df.columns:
         return _empty_findings()
 
@@ -308,8 +382,6 @@ def check_zip_borough_mismatch(df: pd.DataFrame) -> pd.DataFrame:
             continue
 
         expected_borough = _zip_to_expected_borough(zip_str)
-        # Only flag if the ZIP is a valid 5-digit NYC ZIP mapped to a DIFFERENT borough
-        # (malformed ZIP strings like '10027.0' are handled by check_type_change).
         if expected_borough is not None and expected_borough != borough_str:
             records.append({
                 "row_id": idx,
@@ -326,13 +398,45 @@ def check_zip_borough_mismatch(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# 10. Complaint Type inconsistent with Descriptor (Static allow-list baseline)
+# ---------------------------------------------------------------------------
+# Expected: brittle coverage and false alarms on valid unseen descriptors — included for
+# completeness per Task 3 to contrast static lookup tables against statistical/LLM checks.
+def check_complaint_descriptor_allowlist(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Naive rule baseline for complaint_descriptor_mismatch: checks against a small
+    hand-written allow-list of 5 common complaint types. Misses any unlisted
+    complaint_type and false-alarms on legitimate descriptors not in the static set.
+    """
+    if "complaint_type" not in df.columns or "descriptor" not in df.columns:
+        return _empty_findings()
+
+    records = []
+    for idx in df.index:
+        ctype = str(df.at[idx, "complaint_type"]).strip()
+        desc = str(df.at[idx, "descriptor"]).strip()
+        if ctype in STATIC_COMPLAINT_DESCRIPTOR_ALLOWLIST:
+            allowed_descs = STATIC_COMPLAINT_DESCRIPTOR_ALLOWLIST[ctype]
+            if desc not in allowed_descs:
+                records.append({
+                    "row_id": idx,
+                    "problem_type": "complaint_descriptor_mismatch",
+                    "detector": "rule_based",
+                    "confidence": 0.65,
+                    "explanation": (
+                        f"Descriptor '{desc}' not in static allow-list for "
+                        f"complaint_type '{ctype}'."
+                    ),
+                })
+
+    return pd.DataFrame(records, columns=FINDINGS_COLUMNS) if records else _empty_findings()
+
+
+# ---------------------------------------------------------------------------
 # 11. Resolution Description contradicting Status (Simple Keyword Heuristic)
 # ---------------------------------------------------------------------------
 def check_resolution_status_keywords(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    A lightweight keyword rule for Status vs Resolution contradiction. Included
-    so we can measure how far cheap keyword rules get vs. LLM semantic review.
-    """
+    """Lightweight keyword rule for Status vs Resolution contradiction."""
     if "status" not in df.columns or "resolution_description" not in df.columns:
         return _empty_findings()
 
@@ -371,11 +475,7 @@ def check_resolution_status_keywords(df: pd.DataFrame) -> pd.DataFrame:
 # 12. Personal data (PII) in free text (Regex check for phones & emails)
 # ---------------------------------------------------------------------------
 def check_pii_regex(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Scans free-text fields (resolution_description and descriptor) for phone
-    numbers and email addresses using regular expressions. Fast and free, but
-    cannot catch unstructured person names without titles/patterns.
-    """
+    """Scans free-text fields for phone numbers and email addresses via regex."""
     text_cols = [c for c in ("resolution_description", "descriptor") if c in df.columns]
     if not text_cols:
         return _empty_findings()
@@ -402,13 +502,13 @@ def check_pii_regex(df: pd.DataFrame) -> pd.DataFrame:
                     "confidence": 0.95,
                     "explanation": f"Detected {', '.join(matched_types)} in '{col}' via regex.",
                 })
-                break  # Avoid double-counting the same row if both columns have PII
+                break
 
     return pd.DataFrame(records, columns=FINDINGS_COLUMNS) if records else _empty_findings()
 
 
 # ---------------------------------------------------------------------------
-# Unified Runner for All Rule-Based Checks
+# Unified Registry covering all 12 problem types
 # ---------------------------------------------------------------------------
 RULE_DETECTORS = {
     "renamed_dropped_column": check_renamed_dropped_column,
@@ -416,8 +516,11 @@ RULE_DETECTORS = {
     "date_format_switch": check_date_format_switch,
     "latlong_swap": check_latlong_swap,
     "exact_duplicate": check_exact_duplicate,
+    "near_duplicate": check_near_duplicate_rigid,
+    "null_spike": check_null_spike_fixed_threshold,
     "closed_before_created": check_closed_before_created,
     "zip_borough_mismatch": check_zip_borough_mismatch,
+    "complaint_descriptor_mismatch": check_complaint_descriptor_allowlist,
     "resolution_status_contradiction": check_resolution_status_keywords,
     "pii_in_freetext": check_pii_regex,
 }
@@ -426,10 +529,7 @@ RULE_DETECTORS = {
 def run_all_rule_checks(
     df: pd.DataFrame, problem_types: list[str] | None = None
 ) -> pd.DataFrame:
-    """
-    Runs all (or a selected subset of) declarative rule checks on `df` and
-    returns a single concatenated findings DataFrame.
-    """
+    """Runs all (or a selected subset of) declarative rule checks on `df`."""
     target_types = problem_types or list(RULE_DETECTORS.keys())
     results = []
 
@@ -444,7 +544,6 @@ def run_all_rule_checks(
 
 
 if __name__ == "__main__":
-    # Quick standalone verification against corruption_injector
     from project_b.injector.corruption_injector import PROBLEM_TYPES, inject_batch
 
     demo_df = pd.DataFrame({
@@ -463,7 +562,8 @@ if __name__ == "__main__":
         "longitude": [-73.9536] * 12 + [-73.9903] * 8,
     })
 
-    corrupted_df, gt_df = inject_batch(demo_df, PROBLEM_TYPES, rate=0.10, seed=42)
+    corrupted_df, _ = inject_batch(demo_df, PROBLEM_TYPES, rate=0.10, seed=42)
     findings_df = run_all_rule_checks(corrupted_df)
-    print("Rule-based detector findings by problem type:")
+    print(f"Registered rule detectors ({len(RULE_DETECTORS)}/12):", list(RULE_DETECTORS.keys()))
+    print("\nRule-based findings by problem type:")
     print(findings_df["problem_type"].value_counts())

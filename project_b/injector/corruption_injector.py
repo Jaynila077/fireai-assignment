@@ -34,8 +34,6 @@ GROUND_TRUTH_COLUMNS = [
     "corrupted_value",
 ]
 
-# Real NYC ZIP codes mapped by borough so mismatch injection uses plausible NYC ZIPs
-# rather than nonsense strings that any regex would trivially catch.
 NYC_BOROUGH_ZIPS = {
     "MANHATTAN": ["10001", "10002", "10011", "10025", "10027", "10036"],
     "BROOKLYN": ["11201", "11206", "11211", "11215", "11226", "11238"],
@@ -44,7 +42,6 @@ NYC_BOROUGH_ZIPS = {
     "STATEN ISLAND": ["10301", "10304", "10306", "10310", "10312", "10314"],
 }
 
-# Realistic mismatched descriptors for common 311 complaint types.
 INCONSISTENT_DESCRIPTORS = {
     "Noise - Residential": [
         "Dead Animal on Sidewalk",
@@ -88,21 +85,26 @@ def _sample_indices(df: pd.DataFrame, rate: float, rng: np.random.Generator) -> 
     return rng.choice(df.index.to_numpy(), size=n_select, replace=False)
 
 
+def _resolve_zip_col(df: pd.DataFrame) -> str | None:
+    """
+    Finds the active ZIP code column even if `inject_renamed_dropped_column`
+    renamed 'incident_zip' -> 'zip_code' earlier in a multi-problem batch.
+    """
+    for candidate in ("incident_zip", "zip_code"):
+        if candidate in df.columns:
+            return candidate
+    return None
+
+
 # ---------------------------------------------------------------------------
 # 1. Renamed or dropped column
 # ---------------------------------------------------------------------------
 def inject_renamed_dropped_column(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Simulates an upstream schema drift by renaming 'incident_zip' -> 'zip_code'
-    or dropping 'resolution_description'. Since schema drift is a batch-level
-    event, row_id is logged as -1 (or all rows can be considered affected).
-    """
+    """Simulates upstream schema drift by renaming 'incident_zip' or dropping 'resolution_description'."""
     out = df.copy()
     rng = np.random.default_rng(seed)
-
-    # Pick whether to rename a critical column or drop an expected one
     action = rng.choice(["rename", "drop"])
     records = []
 
@@ -142,9 +144,15 @@ def inject_type_change(
     """
     out = df.copy()
     rng = np.random.default_rng(seed)
-    target_col = "incident_zip" if "incident_zip" in out.columns else "latitude"
-    out[target_col] = out[target_col].astype(object)
 
+    # Cast candidate numeric columns to object dtype BEFORE cell assignment so
+    # pandas 2.x does not raise LossySetitemError / TypeError on float64/int64 columns.
+    for col in ("incident_zip", "zip_code", "latitude", "longitude"):
+        if col in out.columns:
+            out[col] = out[col].astype(object)
+
+    zip_col = _resolve_zip_col(out)
+    target_col = zip_col if zip_col is not None else "latitude"
     chosen_idx = _sample_indices(out, rate, rng)
     records = []
 
@@ -158,7 +166,7 @@ def inject_type_change(
     for idx in chosen_idx:
         orig = out.at[idx, target_col]
         fmt_fn = rng.choice(corrupt_formats)
-        corrupted = fmt_fn(orig)
+        corrupted = str(fmt_fn(orig))
         out.at[idx, target_col] = corrupted
         records.append({
             "row_id": idx,
@@ -166,7 +174,7 @@ def inject_type_change(
             "problem_type": "type_change",
             "column_touched": target_col,
             "original_value": str(orig),
-            "corrupted_value": str(corrupted),
+            "corrupted_value": corrupted,
         })
 
     return out, pd.DataFrame(records, columns=GROUND_TRUTH_COLUMNS)
@@ -178,11 +186,7 @@ def inject_type_change(
 def inject_date_format_switch(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Flips created_date from standard ISO (YYYY-MM-DD HH:MM:SS) into ambiguous
-    DD/MM/YYYY or verbose text formats mid-batch, simulating a timezone/locale
-    serialization bug in an upstream ingestion worker.
-    """
+    """Flips created_date from ISO into DD/MM/YYYY or verbose text formats mid-batch."""
     out = df.copy()
     if "created_date" not in out.columns:
         return out, _empty_gt()
@@ -198,8 +202,6 @@ def inject_date_format_switch(
         if pd.isna(ts):
             ts = pd.Timestamp("2023-06-15 14:30:00")
 
-        # Use DD-MM-YYYY (with day > 12 or explicit slashes) or UNIX epoch string
-        # so strict ISO parsers fail or misparse.
         style = rng.choice(["dd_mm_yyyy_slash", "verbose_text", "epoch_str"])
         if style == "dd_mm_yyyy_slash":
             corrupted = ts.strftime("%d/%m/%Y %I:%M %p")
@@ -227,9 +229,7 @@ def inject_date_format_switch(
 def inject_latlong_swap(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Swaps latitude (~40.7) and longitude (~-73.9) for selected rows.
-    """
+    """Swaps latitude (~40.7) and longitude (~-73.9) for selected rows."""
     out = df.copy()
     if "latitude" not in out.columns or "longitude" not in out.columns:
         return out, _empty_gt()
@@ -269,10 +269,7 @@ def inject_latlong_swap(
 def inject_exact_duplicate(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Clones existing rows verbatim and appends them to the batch, simulating
-    at-least-once webhook delivery without deduplication.
-    """
+    """Clones existing rows verbatim and appends them to the batch."""
     out = df.copy()
     rng = np.random.default_rng(seed)
     chosen_idx = _sample_indices(out, rate, rng)
@@ -280,8 +277,6 @@ def inject_exact_duplicate(
         return out, _empty_gt()
 
     cloned_rows = out.loc[chosen_idx].copy()
-    # Assign fresh DataFrame indices to the appended clones so every row has a
-    # distinct index label for row_id scoring, while unique_key stays identical.
     start_idx = (out.index.max() + 1) if pd.api.types.is_integer_dtype(out.index.dtype) else len(out)
     new_indices = list(range(start_idx, start_idx + len(cloned_rows)))
     cloned_rows.index = new_indices
@@ -310,9 +305,8 @@ def inject_near_duplicate(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Clones existing rows but assigns a new unique_key, shifts created_date by
-    1-4 minutes, and adds a minor typo/suffix to descriptor (simulating a user
-    submitting the same 311 complaint twice in a row).
+    Clones existing rows but assigns a new string unique_key, shifts created_date
+    by 1-4 minutes, and adds a minor suffix to descriptor.
     """
     out = df.copy()
     rng = np.random.default_rng(seed)
@@ -320,7 +314,15 @@ def inject_near_duplicate(
     if len(chosen_idx) == 0:
         return out, _empty_gt()
 
+    for col in ("unique_key", "created_date", "descriptor"):
+        if col in out.columns:
+            out[col] = out[col].astype(object)
+
     cloned_rows = out.loc[chosen_idx].copy()
+    for col in ("unique_key", "created_date", "descriptor"):
+        if col in cloned_rows.columns:
+            cloned_rows[col] = cloned_rows[col].astype(object)
+
     start_idx = (out.index.max() + 1) if pd.api.types.is_integer_dtype(out.index.dtype) else len(out)
     new_indices = list(range(start_idx, start_idx + len(cloned_rows)))
     cloned_rows.index = new_indices
@@ -332,11 +334,9 @@ def inject_near_duplicate(
         orig_desc = str(cloned_rows.at[new_idx, "descriptor"]) if "descriptor" in cloned_rows.columns else ""
         orig_ts = cloned_rows.at[new_idx, "created_date"] if "created_date" in cloned_rows.columns else ""
 
-        # Assign a distinct unique_key so exact-key deduplication misses it
         if "unique_key" in cloned_rows.columns:
             cloned_rows.at[new_idx, "unique_key"] = f"{cloned_rows.at[new_idx, 'unique_key']}_ND"
 
-        # Shift timestamp by 1 to 4 minutes
         if "created_date" in cloned_rows.columns:
             ts = pd.to_datetime(orig_ts, errors="coerce")
             if pd.notna(ts):
@@ -345,7 +345,6 @@ def inject_near_duplicate(
                     ts + pd.Timedelta(seconds=delta_sec)
                 ).strftime("%Y-%m-%d %H:%M:%S")
 
-        # Slightly perturb descriptor text
         new_desc = orig_desc + str(rng.choice(suffixes))
         if "descriptor" in cloned_rows.columns:
             cloned_rows.at[new_idx, "descriptor"] = new_desc
@@ -369,18 +368,12 @@ def inject_near_duplicate(
 def inject_null_spike(
     df: pd.DataFrame, rate: float = 0.50, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Picks one well-represented agency in the batch and nulls out key fields
-    (descriptor, incident_zip, resolution_description) at a high rate (default
-    50% of that agency's rows, or scaled from `rate`), simulating a broken API
-    integration for a single city department.
-    """
+    """Picks one major agency in the batch and nulls out key fields at a high rate."""
     out = df.copy()
     if "agency" not in out.columns or len(out) == 0:
         return out, _empty_gt()
 
     rng = np.random.default_rng(seed)
-    # Pick among the top 3 largest agencies so the spike is statistically meaningful
     top_agencies = out["agency"].value_counts().head(3).index.tolist()
     if not top_agencies:
         return out, _empty_gt()
@@ -388,13 +381,12 @@ def inject_null_spike(
     target_agency = rng.choice(top_agencies)
     agency_indices = out.index[out["agency"] == target_agency].to_numpy()
 
-    # Ensure a noticeable spike within that agency (at least 40% of its rows, or `rate` if higher)
     effective_rate = max(rate, 0.45)
     n_select = max(1, int(round(len(agency_indices) * min(effective_rate, 1.0))))
     chosen_idx = rng.choice(agency_indices, size=n_select, replace=False)
 
     nullable_cols = [
-        c for c in ["descriptor", "incident_zip", "resolution_description"] if c in out.columns
+        c for c in ["descriptor", "incident_zip", "zip_code", "resolution_description"] if c in out.columns
     ]
     records = []
 
@@ -420,9 +412,7 @@ def inject_null_spike(
 def inject_closed_before_created(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Sets closed_date to 1-48 hours BEFORE created_date for selected rows.
-    """
+    """Sets closed_date to 2-48 hours BEFORE created_date for selected rows."""
     out = df.copy()
     if "created_date" not in out.columns or "closed_date" not in out.columns:
         return out, _empty_gt()
@@ -462,17 +452,20 @@ def inject_zip_borough_mismatch(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Replaces incident_zip with a valid NYC ZIP code that belongs to a DIFFERENT
-    borough than the row's 'borough' column.
+    Replaces incident_zip (or zip_code if renamed earlier in inject_batch) with
+    a valid NYC ZIP code belonging to a DIFFERENT borough than the row's borough.
     """
     out = df.copy()
-    if "incident_zip" not in out.columns or "borough" not in out.columns:
+    zip_col = _resolve_zip_col(out)
+    if zip_col is None or "borough" not in out.columns:
         return out, _empty_gt()
 
-    out["incident_zip"] = out["incident_zip"].astype(object)
+    out[zip_col] = out[zip_col].astype(object)
     rng = np.random.default_rng(seed)
 
-    valid_mask = out["borough"].astype(str).str.upper().isin(NYC_BOROUGH_ZIPS.keys())
+    # Normalize borough strings so whitespace or casing never filters out candidates
+    norm_borough = out["borough"].fillna("").astype(str).str.strip().str.upper()
+    valid_mask = norm_borough.isin(NYC_BOROUGH_ZIPS.keys())
     candidate_indices = out.index[valid_mask].to_numpy()
     if len(candidate_indices) == 0 or rate <= 0.0:
         return out, _empty_gt()
@@ -485,18 +478,18 @@ def inject_zip_borough_mismatch(
     all_boroughs = list(NYC_BOROUGH_ZIPS.keys())
 
     for idx in chosen_idx:
-        row_borough = str(out.at[idx, "borough"]).upper()
-        orig_zip = out.at[idx, "incident_zip"]
+        row_borough = norm_borough.at[idx]
+        orig_zip = out.at[idx, zip_col]
         other_boroughs = [b for b in all_boroughs if b != row_borough]
-        wrong_borough = rng.choice(other_boroughs)
-        wrong_zip = rng.choice(NYC_BOROUGH_ZIPS[wrong_borough])
+        wrong_borough = str(rng.choice(other_boroughs))
+        wrong_zip = str(rng.choice(NYC_BOROUGH_ZIPS[wrong_borough]))
 
-        out.at[idx, "incident_zip"] = wrong_zip
+        out.at[idx, zip_col] = wrong_zip
         records.append({
             "row_id": idx,
             "unique_key": out.at[idx, "unique_key"] if "unique_key" in out.columns else idx,
             "problem_type": "zip_borough_mismatch",
-            "column_touched": "incident_zip",
+            "column_touched": zip_col,
             "original_value": f"{orig_zip} ({row_borough})",
             "corrupted_value": f"{wrong_zip} (from {wrong_borough})",
         })
@@ -510,10 +503,7 @@ def inject_zip_borough_mismatch(
 def inject_complaint_descriptor_mismatch(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Pairs a row's complaint_type with a semantically incompatible descriptor
-    (e.g. 'Noise - Residential' paired with 'Broken Parking Meter').
-    """
+    """Pairs a row's complaint_type with a semantically incompatible descriptor."""
     out = df.copy()
     if "complaint_type" not in out.columns or "descriptor" not in out.columns:
         return out, _empty_gt()
@@ -548,13 +538,13 @@ def inject_complaint_descriptor_mismatch(
 def inject_resolution_status_contradiction(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Injects a semantic contradiction between 'status' and 'resolution_description'
-    (e.g., status='Open' while resolution says the case was inspected and closed).
-    """
+    """Injects a semantic contradiction between 'status' and 'resolution_description'."""
     out = df.copy()
-    if "status" not in out.columns or "resolution_description" not in out.columns:
+    if "status" not in out.columns:
         return out, _empty_gt()
+    # If resolution_description was dropped earlier, recreate it as object so row corruption works
+    if "resolution_description" not in out.columns:
+        out["resolution_description"] = "Service request logged."
 
     out["status"] = out["status"].astype(object)
     out["resolution_description"] = out["resolution_description"].astype(object)
@@ -602,11 +592,7 @@ def inject_resolution_status_contradiction(
 def inject_pii_in_freetext(
     df: pd.DataFrame, rate: float = 0.05, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Injects both structured PII (phone numbers, emails) AND subtle unstructured
-    PII (full names and apartment details embedded naturally in prose) so we can
-    measure the gap between regex rules and LLM semantic review.
-    """
+    """Injects structured PII (phones/emails) and unstructured PII (full names in prose)."""
     out = df.copy()
     target_col = "resolution_description" if "resolution_description" in out.columns else "descriptor"
     out[target_col] = out[target_col].astype(object)
@@ -615,8 +601,6 @@ def inject_pii_in_freetext(
     chosen_idx = _sample_indices(out, rate, rng)
     records = []
 
-    # Mix regex-catchable PII (phones/emails) with subtle natural-language PII
-    # (full names in context) so rules catch ~50% and LLM catches the rest.
     pii_snippets = [
         " Tenant Maria Gonzalez in Apt 4B called from (917) 555-0148 to report the leak.",
         " Spoke with homeowner David K. Morales who asked us to email updates to d.morales84@gmail.com.",
@@ -677,43 +661,27 @@ def inject_batch(
     seed: int = 42,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Applies a chosen list of problem types sequentially to a copy of `df` and
-    returns `(corrupted_df, combined_ground_truth_df)`.
+    Applies a chosen list of problem types to a copy of `df`.
+    Note: Schema-level column rename/drop (`renamed_dropped_column`) is applied
+    LAST so that renaming `incident_zip` or dropping `resolution_description`
+    never prevents row-level injectors (`zip_borough_mismatch`, `resolution_status_contradiction`)
+    from finding their target columns when multiple problem types are injected together.
     """
     corrupted = df.copy()
     gt_logs = []
 
-    for offset, ptype in enumerate(problem_types):
+    # Preserve original sub-seed offsets per problem type, but execute
+    # renamed_dropped_column after row-level corruptions.
+    indexed_types = list(enumerate(problem_types))
+    row_level = [(i, p) for i, p in indexed_types if p != "renamed_dropped_column"]
+    schema_level = [(i, p) for i, p in indexed_types if p == "renamed_dropped_column"]
+
+    for offset, ptype in row_level + schema_level:
         if ptype not in INJECTOR_REGISTRY:
             raise ValueError(f"Unknown problem_type '{ptype}'.")
-        # Derive an independent deterministic seed per problem type
         corrupted, gt = INJECTOR_REGISTRY[ptype](corrupted, rate, seed + offset * 101)
         if not gt.empty:
             gt_logs.append(gt)
 
     full_gt = pd.concat(gt_logs, ignore_index=True) if gt_logs else _empty_gt()
     return corrupted, full_gt
-
-
-if __name__ == "__main__":
-    # Minimal standalone self-test on a synthetic 20-row NYC 311 batch
-    demo_df = pd.DataFrame({
-        "unique_key": [f"311-{1000 + i}" for i in range(20)],
-        "created_date": ["2023-07-10 09:00:00"] * 20,
-        "closed_date": ["2023-07-10 15:00:00"] * 20,
-        "agency": ["NYPD"] * 12 + ["DOT"] * 8,
-        "agency_name": ["New York City Police Department"] * 12 + ["Department of Transportation"] * 8,
-        "complaint_type": ["Noise - Residential"] * 12 + ["Street Condition"] * 8,
-        "descriptor": ["Loud Music/Party"] * 12 + ["Pothole"] * 8,
-        "status": ["Closed"] * 20,
-        "resolution_description": ["The Police Department responded and took action."] * 20,
-        "incident_zip": ["10027"] * 12 + ["11201"] * 8,
-        "borough": ["MANHATTAN"] * 12 + ["BROOKLYN"] * 8,
-        "latitude": [40.8116] * 12 + [40.6943] * 8,
-        "longitude": [-73.9536] * 12 + [-73.9903] * 8,
-    })
-
-    corrupted_demo, gt_demo = inject_batch(demo_df, PROBLEM_TYPES, rate=0.10, seed=42)
-    print(f"Original shape: {demo_df.shape} -> Corrupted shape: {corrupted_demo.shape}")
-    print("\nGround truth summary by problem type:")
-    print(gt_demo["problem_type"].value_counts())
