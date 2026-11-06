@@ -152,6 +152,14 @@ activemq-data/
 # Environments
 .env
 .envrc
+
+# Project B Data Extracts (NYC Open Data ~314MB, fetch via scripts/fetch_nyc_311_data.py)
+project_b/data/*.csv
+project_b/data/*.parquet
+
+# Generated benchmark outputs
+RESULTS_A_generated.md
+RESULTS_B_generated.md
 .venv
 env/
 venv/
