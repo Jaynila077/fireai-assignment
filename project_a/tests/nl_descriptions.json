@@ -1,0 +1,366 @@
+[
+  {
+    "id": "NL_001",
+    "style": "formal_english",
+    "text": "My annual gross salary is 18,00,000. Basic salary is 9,00,000, and I receive HRA of 3,60,000. I pay 30,000 monthly rent in Bengaluru. I invest 1.5L in 80C and 50k in NPS.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_002",
+    "style": "formal_english",
+    "text": "I earn an annual CTC of 12,50,000 rupees. I pay 25,000 for medical insurance for myself and 50,000 for my senior citizen parents. I have no other deductions.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_003",
+    "style": "formal_english",
+    "text": "Annual salary is 7,50,000. I do not have any investments or rent receipts. Which tax regime is better for me?",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_004",
+    "style": "formal_english",
+    "text": "Salary is 25,00,000. Basic is 12,00,000. HRA is 4,00,000. Rent paid is 40,000 per month in Mumbai. Home loan interest for self-occupied flat is 2,00,000.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_005",
+    "style": "formal_english",
+    "text": "I am 65 years old with a pension/salary of 8,00,000 per annum. I have 1,50,000 in PPF under 80C and pay 35,000 health insurance.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_006",
+    "style": "formal_english",
+    "text": "My fixed salary is 6,50,000 per year. I have no investments or exemptions.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_007",
+    "style": "formal_english",
+    "text": "Annual package is 45,00,000. Basic salary 20,00,000. Max 80C 1.5L, NPS 50k, health insurance 25k for self.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_008",
+    "style": "formal_english",
+    "text": "Gross annual salary is 5,20,000. I have 50,000 in ELSS mutual funds.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_009",
+    "style": "formal_english",
+    "text": "I am an 82 year old retired employee with salary/pension of 11,00,000. I pay medical insurance of 45,000.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_010",
+    "style": "formal_english",
+    "text": "Salary is 55,00,000. No deductions claimed except standard deduction.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_011",
+    "style": "hinglish",
+    "text": "Mera annual package 15 lakh hai. Basic 7.5L hai aur rent 25000 per month deta hu Delhi me. HRA 3 lakh milta hai. 80C me 1.5L pura hai.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_012",
+    "style": "hinglish",
+    "text": "Salary 8.5L hai. 80C me 1 lakh dala hai aur NPS me 50k. Papa senior citizen hai unka health insurance 40k bhara hai.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_013",
+    "style": "hinglish",
+    "text": "Bhai package 7.75 lakh hai. Kuch investment nahi hai. Tax kitna lagega new regime me?",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_014",
+    "style": "hinglish",
+    "text": "Total salary 22 lakh per annum. Mumbai me rehta hu flat rent 35k monthly. HRA 4L aur basic 10L. Home loan ka interest 1.8L hai.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_015",
+    "style": "hinglish",
+    "text": "Mera CTC 10 LPA hai. PPF me 1.5L dalta hu har saal aur medi-claim 20k hai self ka.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_016",
+    "style": "hinglish",
+    "text": "Salary 5 lakh 40 hazaar hai. Standard deduction ke baad 87A rebate milega kya old regime me?",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_017",
+    "style": "hinglish",
+    "text": "Sir 18L ka package hai. 80C 1.5L, NPS 50k, Mediclaim 25k khudka aur 50k parents ka (both 65+ age). Kaunsa regime lu?",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_018",
+    "style": "hinglish",
+    "text": "Meri salary 12 lakh hai. Rent deta hu 20,000 Pune me but HRA component nahi pata exact.",
+    "expected_status": "ambiguous"
+  },
+  {
+    "id": "NL_019",
+    "style": "hinglish",
+    "text": "Salary 30 lakh hai. Flat khareeda hai toh home loan interest 2.5 lakh de raha hu. 80C me bhi 1.5 lakh hai.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_020",
+    "style": "hinglish",
+    "text": "Package 7 lakh 20 hazaar hai. Kuch 80C me nahi lagaya.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_021",
+    "style": "hinglish",
+    "text": "Bhai annual salary 50 lakh cross ho gayi (52L). Surcharge lagega kya aur kitna?",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_022",
+    "style": "hinglish",
+    "text": "Maine abhi join kiya hai 9L salary pe. No idea tax kaise banta hai. Zero investment right now.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_023",
+    "style": "hinglish",
+    "text": "CTC 14L. HRA exemption chahiye, rent 15000 per month non-metro me deta hu. Basic 50% hai salary ka aur HRA 2.5L hai.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_024",
+    "style": "hinglish",
+    "text": "Papa ki age 68 hai, unki pension 6.5 lakh hai. Medical insurance 30,000 lagti hai.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_025",
+    "style": "hinglish",
+    "text": "Mera package 16 LPA hai. Kuch deductions nahi hai bas PF kat ta hai 1.5L.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_026",
+    "style": "incomplete",
+    "text": "I earn around 15 lakhs per year. Please calculate my tax.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "regime_preference_or_deductions",
+      "rent_details_if_claiming_hra"
+    ]
+  },
+  {
+    "id": "NL_027",
+    "style": "incomplete",
+    "text": "My salary is 20 LPA and I pay rent in Mumbai.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "monthly_rent_amount",
+      "basic_salary",
+      "hra_received"
+    ]
+  },
+  {
+    "id": "NL_028",
+    "style": "incomplete",
+    "text": "I pay 30,000 rent per month and earn good salary in Gurgaon.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "annual_salary",
+      "basic_salary",
+      "hra_received"
+    ]
+  },
+  {
+    "id": "NL_029",
+    "style": "incomplete",
+    "text": "Mera CTC 18 lakh hai aur main rent pe rehta hu.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "rent_amount",
+      "city",
+      "basic_salary"
+    ]
+  },
+  {
+    "id": "NL_030",
+    "style": "incomplete",
+    "text": "Salary 12L. Claiming HRA and medical insurance.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "rent_paid",
+      "insurance_premium",
+      "parents_age"
+    ]
+  },
+  {
+    "id": "NL_031",
+    "style": "incomplete",
+    "text": "I have home loan and earn 14 lakhs annually.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "home_loan_interest_amount",
+      "property_type"
+    ]
+  },
+  {
+    "id": "NL_032",
+    "style": "incomplete",
+    "text": "Salary is 8.5L. Standard deductions apply.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "specific_80c_amounts"
+    ]
+  },
+  {
+    "id": "NL_033",
+    "style": "incomplete",
+    "text": "I earn 25 LPA. Tell me tax for both regimes.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_034",
+    "style": "incomplete",
+    "text": "Package 16 lakhs. Medical insurance paid 40,000 for family.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "breakup_self_vs_parents",
+      "parents_senior_citizen"
+    ]
+  },
+  {
+    "id": "NL_035",
+    "style": "incomplete",
+    "text": "Mera salary 10L hai, 80C me pura paisa dala hai.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_036",
+    "style": "incomplete",
+    "text": "Salary 9 LPA, paying rent.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "rent_amount",
+      "city",
+      "basic_salary",
+      "hra_received"
+    ]
+  },
+  {
+    "id": "NL_037",
+    "style": "incomplete",
+    "text": "Annual income 35 lakhs. Have some NPS and PPF.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "exact_nps_ppf_amounts"
+    ]
+  },
+  {
+    "id": "NL_038",
+    "style": "incomplete",
+    "text": "Rent is 22,000 monthly in Kolkata. What is my HRA benefit?",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "annual_salary",
+      "basic_salary",
+      "hra_received"
+    ]
+  },
+  {
+    "id": "NL_039",
+    "style": "incomplete",
+    "text": "Gross 6,00,000. Want to know tax.",
+    "expected_status": "complete"
+  },
+  {
+    "id": "NL_040",
+    "style": "incomplete",
+    "text": "CTC is 28L. Paying heavy rent in Bangalore.",
+    "expected_status": "needs_clarification",
+    "missing": [
+      "exact_rent_paid",
+      "basic_salary",
+      "hra_received"
+    ]
+  },
+  {
+    "id": "NL_041",
+    "style": "contradictory",
+    "text": "I want New Regime but want to deduct my 1.5L 80C and 2L home loan interest on 18L salary.",
+    "expected_status": "contradiction",
+    "flag": "80C and 24b not allowed under New Regime"
+  },
+  {
+    "id": "NL_042",
+    "style": "contradictory",
+    "text": "My annual salary is 10,00,000 and my basic salary is 12,00,000.",
+    "expected_status": "contradiction",
+    "flag": "Basic salary cannot exceed gross salary"
+  },
+  {
+    "id": "NL_043",
+    "style": "contradictory",
+    "text": "I earn 12L salary and pay zero rent, but I want 3L HRA tax exemption.",
+    "expected_status": "contradiction",
+    "flag": "HRA exemption requires rent payment"
+  },
+  {
+    "id": "NL_044",
+    "style": "contradictory",
+    "text": "In new regime, calculate tax on 7.8L salary with 87A full rebate.",
+    "expected_status": "clarification_needed",
+    "flag": "87A full rebate only up to 7L taxable in new regime"
+  },
+  {
+    "id": "NL_045",
+    "style": "contradictory",
+    "text": "My age is 25 and I am claiming senior citizen parent 80D deduction for myself.",
+    "expected_status": "contradiction",
+    "flag": "Self age is under 60"
+  },
+  {
+    "id": "NL_046",
+    "style": "contradictory",
+    "text": "Salary is 15L. I pay 40k rent to my own self-occupied property for which I claim 2L interest.",
+    "expected_status": "contradiction",
+    "flag": "Cannot pay rent to own self-occupied house"
+  },
+  {
+    "id": "NL_047",
+    "style": "contradictory",
+    "text": "I invest 3,00,000 in Section 80C to get 3 lakh deduction on 20L salary.",
+    "expected_status": "clarification_needed",
+    "flag": "80C capped at 1.5L by statute"
+  },
+  {
+    "id": "NL_048",
+    "style": "contradictory",
+    "text": "New regime me standard deduction 1.5 lakh lagao on 14L salary.",
+    "expected_status": "contradiction",
+    "flag": "Standard deduction in new regime is 75,000"
+  },
+  {
+    "id": "NL_049",
+    "style": "contradictory",
+    "text": "Salary is negative 5,00,000 due to losses in shares.",
+    "expected_status": "contradiction",
+    "flag": "Salary cannot be negative; capital loss cannot offset salary"
+  },
+  {
+    "id": "NL_050",
+    "style": "contradictory",
+    "text": "My annual salary is 75,000 and I pay 1,50,000 in 80C.",
+    "expected_status": "contradiction",
+    "flag": "Deductions exceed gross salary, taxable becomes 0"
+  }
+]
